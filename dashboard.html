@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Painel de Pedidos</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <h2>Bem-vindo, {{ session['nome'] }} ({{ session['cargo'] }})</h2>
+        <a href="/logout">Sair</a>
+
+        {% if session['cargo'] == 'vendedor' %}
+            <a href="/cadastro" class="btn">Cadastrar Pedido</a>
+        {% endif %}
+
+        <h3>Pedidos em Aberto</h3>
+        {% for pedido in abertos %}
+            <div class="pedido prioridade{{ pedido.prioridade }}">
+                <strong>#{{ pedido.numero_venda }}</strong> - Prioridade {{ pedido.prioridade }}<br>
+                Vendedor: {{ pedido.vendedor }}<br>
+                Criado em: {{ pedido.data_criacao.strftime('%d/%m/%Y %H:%M') }}<br>
+                
+                {% if session['cargo'] == 'caixa' %}
+                    <form method="post" action="/atualizar/{{ pedido.id }}">
+                        <label><input type="checkbox" name="nf_pronta" {% if pedido.nf_pronta %}checked{% endif %}> NF Pronta</label><br>
+                        <label><input type="checkbox" name="guia_paga" {% if pedido.guia_paga %}checked{% endif %}> Guia Paga</label><br>
+                        <button type="submit">Atualizar</button>
+                    </form>
+                    {% if pedido.data_financeiro %}
+                        <small>Atualizado em: {{ pedido.data_financeiro.strftime('%d/%m/%Y %H:%M') }}</small>
+                    {% endif %}
+                {% elif session['cargo'] == 'estoque' %}
+                    <form method="post" action="/atualizar/{{ pedido.id }}">
+                        <label><input type="checkbox" name="separado" {% if pedido.separado %}checked{% endif %}> Separado</label><br>
+                        <button type="submit">Atualizar</button>
+                    </form>
+                    {% if pedido.data_estoque %}
+                        <small>Atualizado em: {{ pedido.data_estoque.strftime('%d/%m/%Y %H:%M') }}</small>
+                    {% endif %}
+                {% endif %}
+            </div>
+        {% else %}
+            <p>Nenhum pedido em aberto.</p>
+        {% endfor %}
+
+        <h3>Pedidos Finalizados</h3>
+        {% for pedido in finalizados %}
+            <div class="pedido finalizado">
+                Pedido #{{ pedido.numero_venda }} - Finalizado em: 
+                {% if pedido.data_estoque %}
+                    {{ pedido.data_estoque.strftime('%d/%m/%Y %H:%M') }}
+                {% endif %}
+            </div>
+        {% else %}
+            <p>Nenhum pedido finalizado ainda.</p>
+        {% endfor %}
+    </div>
+</body>
+</html>
