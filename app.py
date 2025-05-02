@@ -3,97 +3,51 @@ from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 
 app = Flask(__name__)
-app.secret_key = 'chave-secreta'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///banco.db'
+app.config['SECRET_KEY'] = 'minha-chave-secreta'
+
 db = SQLAlchemy(app)
 
-# Tipos de usuário
-TIPOS_USUARIO = ['vendedor', 'caixa', 'estoque']
-
-class Usuario(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    nome = db.Column(db.String(100))
-    login = db.Column(db.String(50), unique=True)
-    senha = db.Column(db.String(50))
-    cargo = db.Column(db.String(20))
-
+# Modelos
 class Pedido(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    numero_venda = db.Column(db.String(20))
-    prioridade = db.Column(db.Integer)
-    vendedor = db.Column(db.String(100))
-    data_criacao = db.Column(db.DateTime, default=datetime.now)
+    descricao = db.Column(db.String(200), nullable=False)
+    status = db.Column(db.String(50), default='aberto')
+    prioridade = db.Column(db.Integer, default=1)
+    data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
+    responsavel = db.Column(db.String(50))
+    hora_ultima_acao = db.Column(db.DateTime)
 
-    nf_pronta = db.Column(db.Boolean, default=False)
-    guia_paga = db.Column(db.Boolean, default=False)
-    data_financeiro = db.Column(db.DateTime, nullable=True)
+# Roda uma vez antes da primeira requisição
+@app.before_request
+def criar_banco_uma_vez():
+    if not hasattr(app, 'banco_inicializado'):
+        db.create_all()
+        app.banco_inicializado = True
 
-    separado = db.Column(db.Boolean, default=False)
-    data_estoque = db.Column(db.DateTime, nullable=True)
-
-    def finalizado(self):
-        return self.nf_pronta and self.guia_paga and self.separado
-
-@app.before_first_request
-def criar_tabelas():
-    db.create_all()
-
+# Rotas
 @app.route('/')
 def index():
-    return redirect(url_for('login'))
+    pedidos = Pedido.query.filter_by(status='aberto').order_by(Pedido.prioridade.desc()).all()
+    return render_template('index.html', pedidos=pedidos)
 
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        login = request.form['login']
-        senha = request.form['senha']
-        usuario = Usuario.query.filter_by(login=login, senha=senha).first()
-        if usuario:
-            session['usuario_id'] = usuario.id
-            session['cargo'] = usuario.cargo
-            session['nome'] = usuario.nome
-            return redirect(url_for('dashboard'))
-        else:
-            return render_template('login.html', erro='Login inválido')
-    return render_template('login.html')
-
-@app.route('/logout')
-def logout():
-    session.clear()
-    return redirect(url_for('login'))
-
-@app.route('/dashboard')
-def dashboard():
-    pedidos = Pedido.query.all()
-    abertos = sorted([p for p in pedidos if not p.finalizado()], key=lambda x: x.prioridade)
-    finalizados = [p for p in pedidos if p.finalizado()]
-    return render_template('dashboard.html', abertos=abertos, finalizados=finalizados)
-
-@app.route('/cadastro', methods=['GET', 'POST'])
-def cadastro():
-    if session.get('cargo') != 'vendedor':
-        return redirect(url_for('dashboard'))
-    if request.method == 'POST':
-        numero = request.form['numero']
-        prioridade = int(request.form['prioridade'])
-        pedido = Pedido(numero_venda=numero, prioridade=prioridade, vendedor=session['nome'])
-        db.session.add(pedido)
-        db.session.commit()
-        return redirect(url_for('dashboard'))
-    return render_template('cadastro.html')
-
-@app.route('/atualizar/<int:pedido_id>', methods=['POST'])
-def atualizar(pedido_id):
-    pedido = Pedido.query.get(pedido_id)
-    if session.get('cargo') == 'caixa':
-        pedido.nf_pronta = 'nf_pronta' in request.form
-        pedido.guia_paga = 'guia_paga' in request.form
-        pedido.data_financeiro = datetime.now()
-    elif session.get('cargo') == 'estoque':
-        pedido.separado = 'separado' in request.form
-        pedido.data_estoque = datetime.now()
+@app.route('/criar', methods=['POST'])
+def criar():
+    descricao = request.form['descricao']
+    prioridade = request.form.get('prioridade', 1)
+    novo_pedido = Pedido(descricao=descricao, prioridade=int(prioridade))
+    db.session.add(novo_pedido)
     db.session.commit()
-    return redirect(url_for('dashboard'))
+    return redirect(url_for('index'))
+
+@app.route('/atualizar/<int:id>', methods=['POST'])
+def atualizar(id):
+    pedido = Pedido.query.get_or_404(id)
+    novo_status = request.form.get('status', 'aberto')
+    pedido.status = novo_status
+    pedido.hora_ultima_acao = datetime.utcnow()
+    db.session.commit()
+    return redirect(url_for('index'))
 
 if __name__ == '__main__':
     app.run(debug=True)
